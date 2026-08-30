@@ -66,3 +66,60 @@ def tap(x: int, y: int):
 
     except Exception as error:
         return f"Failed to click: {error}"
+
+def type_text(text: str):
+    try:
+        pyautogui.write(text, interval=0.02)
+
+        return f"Successfully typed: {text}"
+
+    except Exception as error:
+        return f"Failed to type text: {error}"
+
+def press_key(key: str):
+    try:
+        pyautogui.press(key)
+
+        return f"Successfully pressed {key}."
+
+    except Exception as error:
+        return f"Failed to press key: {error}"
+
+def hotkey(*keys: str):
+    try:
+        pyautogui.hotkey(*keys)
+
+        return f"Successfully pressed {' + '.join(keys)}."
+
+    except Exception as error:
+        return f"Failed to press hotkey: {error}"
+
+
+def scroll(amount: int):
+    try:
+        pyautogui.scroll(amount)
+
+        return f"Successfully scrolled {amount}."
+
+    except Exception as error:
+        return f"Failed to scroll: {error}"
+
+
+def wait(seconds: float):
+    try:
+        import time
+        time.sleep(seconds)
+
+        return f"Waited for {seconds} seconds."
+
+    except Exception as error:
+        return f"Failed to wait: {error}"
+
+def save_file(filename: str):
+    """
+    Open Save As and prepare the requested filename.
+    """
+    hotkey("ctrl", "shift", "s")
+    wait(1)
+
+    return f"Save dialog opened. Requested filename: {filename}"
