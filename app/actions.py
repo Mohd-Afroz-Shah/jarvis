@@ -1,3 +1,4 @@
+import os
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
@@ -32,19 +33,28 @@ def open_app(app_name: Optional[str]):
     if not app_name:
         return "No application specified."
 
+    normalized_name = app_name.strip().lower()
     apps = {
         "chrome": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         "calculator": "calc.exe",
         "notepad": "notepad.exe",
     }
 
-    app_path = apps.get(app_name.lower())
+    if normalized_name in ("explorer", "file explorer", "windows explorer"):
+        app_path = "explorer.exe"
+        app_args = []
+    elif normalized_name in ("downloads", "download folder"):
+        app_path = "explorer.exe"
+        app_args = [os.path.join(os.path.expanduser("~"), "Downloads")]
+    else:
+        app_path = apps.get(normalized_name)
+        app_args = []
 
     if not app_path:
         return f"I don't know how to open {app_name} yet."
 
     try:
-        subprocess.Popen(app_path)
+        subprocess.Popen([app_path, *app_args])
         return f"Successfully opened {app_name}."
 
     except Exception as error:

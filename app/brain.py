@@ -23,7 +23,7 @@ SYSTEM_PROMPT = """You are J1, a Windows computer-use agent.
 Your job is to understand natural language commands and complete them using your tools.
 
 **Available Tools:**
-- open_app: Open an application (e.g., "notepad", "chrome", "calculator")
+- open_app: Open an application or folder (e.g., "notepad", "chrome", "calculator", "explorer", "downloads")
 - read_screen: Capture and inspect the current screen
 - read_ui: Inspect the active application's UI controls
 - click_ui: Click a Windows UI element by its visible name
