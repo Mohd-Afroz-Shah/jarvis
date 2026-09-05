@@ -5,7 +5,10 @@ Multi-step command planning for J1.
 Helps the agent break down complex commands into manageable steps.
 """
 
+import re
+
 from llm import ask
+from task import J1Task, TaskStep
 
 
 PLANNING_SYSTEM_PROMPT = """You are a planning assistant for J1, a Windows computer control agent.
@@ -115,6 +118,38 @@ def should_create_plan(user_command):
         return True
     
     return False
+
+
+def create_structured_plan(user_command):
+    """Create a compact structured plan for the current command."""
+    command = user_command.strip()
+    lower = command.lower()
+
+    if not should_create_plan(command):
+        return J1Task(command, [TaskStep(command)])
+
+    steps = []
+    app_match = re.search(r"(?:open|launch)\s+(?:the\s+)?([\w ]+?)(?:\s+and|\s*,|$)", command, re.I)
+    if app_match:
+        steps.append(TaskStep(f"Open {app_match.group(1).strip()}"))
+
+    text_match = re.search(r"(?:write|type|enter)\s+(.+?)(?:\s*,|\s+then|\s+and\s+(?:save|close)|$)", command, re.I)
+    if text_match:
+        steps.append(TaskStep(f"Type {text_match.group(1).strip()}"))
+
+    if "save" in lower:
+        steps.append(TaskStep("Save the file"))
+        steps.append(TaskStep("Verify the file was saved"))
+
+    if "close" in lower:
+        steps.append(TaskStep("Close the application"))
+        steps.append(TaskStep("Verify the application is closed"))
+
+    if not steps:
+        clauses = [part.strip() for part in re.split(r",|\bthen\b|\band\b", command, flags=re.I) if part.strip()]
+        steps = [TaskStep(clause) for clause in clauses]
+
+    return J1Task(command, steps or [TaskStep(command)])
 
 
 def get_planning_tips(user_command):

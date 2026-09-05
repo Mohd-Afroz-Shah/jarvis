@@ -14,8 +14,10 @@ import time
 from io import BytesIO
 from PIL import Image
 from llm import ask
-from tool_executor import execute_tool
 from tools import TOOLS
+from planning import create_structured_plan
+from state import J1State
+from task_executor import execute_task_tool
 
 
 SYSTEM_PROMPT = """You are J1, a Windows computer-use agent.
@@ -111,6 +113,20 @@ def execute_agent_loop(user_command, max_iterations=20):
     
     request_started = time.perf_counter()
 
+    task = create_structured_plan(user_command)
+    state = J1State(
+        goal=user_command,
+        task_status="running",
+        pending_steps=task.pending_descriptions(),
+    )
+
+    print("Goal:")
+    print(f"  {user_command}")
+    if len(task.steps) > 1:
+        print("Plan:")
+        for index, step in enumerate(task.steps, 1):
+            print(f"  {index}. {step.description}")
+
     # Initialize conversation history
     messages = [
         {
@@ -125,6 +141,7 @@ def execute_agent_loop(user_command, max_iterations=20):
     
     iteration = 0
     repeated_tools = []  # Track repeated tool calls
+    executed_any_tool = False
     
     print(f"\n{'='*60}")
     print(f"User: {user_command}")
@@ -162,12 +179,27 @@ def execute_agent_loop(user_command, max_iterations=20):
             # A normal assistant response with no structured tool calls ends
             # the current request. Thinking text is intentionally ignored.
             if not tool_calls:
-                print(f"\n{'='*60}")
-                print(f"J1: {content}")
-                print(f"Response time: {format_elapsed_time(time.perf_counter() - request_started)}")
-                print(f"{'='*60}\n")
-                return content
-            
+                if task.is_complete or not executed_any_tool:
+                    task.status = "completed" if task.is_complete else task.status
+                    state.task_status = task.status
+                    print(f"Task status: {state.task_status}")
+                    print(f"Current step: {len(task.steps) - len(task.pending_descriptions())} / {len(task.steps)}")
+                    print(f"\n{'='*60}")
+                    print(f"J1: {content}")
+                    print(f"Response time: {format_elapsed_time(time.perf_counter() - request_started)}")
+                    print(f"{'='*60}\n")
+                    return content
+
+                state.task_status = "recovering"
+                messages.append({
+                    "role": "user",
+                    "content": f"The task is not verified complete. Current state: {state.compact_context()}. Continue with the next required action.",
+                })
+                continue
+
+            state.task_status = "running"
+            state.current_step = len(task.steps) - len(task.pending_descriptions()) + 1
+
             # Execute each tool call
             tool_call_results = []
             
@@ -200,7 +232,9 @@ def execute_agent_loop(user_command, max_iterations=20):
                 
                 # Execute the tool
                 try:
-                    result = execute_tool(tool_name, tool_args)
+                    execution = execute_task_tool(task, state, tool_name, tool_args)
+                    result = execution["result"]
+                    executed_any_tool = True
                     
                     # Handle screenshot data
                     if tool_name == "read_screen" and isinstance(result, bytes):
@@ -209,12 +243,14 @@ def execute_agent_loop(user_command, max_iterations=20):
                             "tool_name": tool_name,
                             "result": result_text,
                             "tool_call_id": tool_call_id,
+                            "verification": execution["verification"],
                         })
                     else:
                         tool_call_results.append({
                             "tool_name": tool_name,
                             "result": result,
                             "tool_call_id": tool_call_id,
+                            "verification": execution["verification"],
                         })
                     
                     # Print result summary
@@ -231,6 +267,7 @@ def execute_agent_loop(user_command, max_iterations=20):
                         "tool_name": tool_name,
                         "result": error_msg,
                         "tool_call_id": tool_call_id,
+                        "verification": {"verified": False, "method": "exception"},
                     })
             
             # Preserve the assistant's structured tool calls so Ollama can
@@ -277,6 +314,13 @@ def execute_agent_loop(user_command, max_iterations=20):
                 if tool_result.get("tool_call_id"):
                     tool_message["tool_call_id"] = tool_result["tool_call_id"]
                 messages.append(tool_message)
+
+            state.pending_steps = task.pending_descriptions()
+            state.current_step = len(task.steps) - len(state.pending_steps)
+            messages.append({
+                "role": "user",
+                "content": f"J1 task state: {state.compact_context()}",
+            })
             
         except Exception as e:
             error_msg = f"Error in agent loop: {str(e)}"

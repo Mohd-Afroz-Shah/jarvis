@@ -15,6 +15,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 from brain import understand
 from actions import read_screen, wait
 from ui import get_active_ui
+from planning import create_structured_plan
+from state import J1State
+from task import J1Task, TaskStep
 
 
 class TestResult:
@@ -84,6 +87,34 @@ def test_wait():
     elapsed = time.time() - start
     assert 0.9 < elapsed < 1.5, "Wait should be approximately 1 second"
     print(f"Wait test completed in {elapsed:.2f}s")
+
+
+def test_structured_plan():
+    """Test: Multi-step commands produce explicit task steps."""
+    task = create_structured_plan(
+        "Open Notepad, write Hello, save it as test.txt and close Notepad"
+    )
+    assert len(task.steps) >= 5, "Expected a structured multi-step plan"
+    assert task.steps[0].description == "Open Notepad"
+    assert all(step.status == "pending" for step in task.steps)
+    print(f"Structured plan created with {len(task.steps)} steps")
+
+
+def test_state_updates():
+    """Test: Task and runtime state track progress explicitly."""
+    task = J1Task("Open Notepad", [TaskStep("Open Notepad")])
+    state = J1State("Open Notepad", pending_steps=task.pending_descriptions())
+    task.mark_current_running()
+    state.update_action("open_app", "Successfully opened Notepad")
+    state.current_application = "Notepad"
+    task.complete_current("Successfully opened Notepad")
+    state.pending_steps = task.pending_descriptions()
+    state.task_status = task.status
+    assert task.is_complete
+    assert state.current_application == "Notepad"
+    assert state.last_action == "open_app"
+    assert state.task_status == "completed"
+    print("State transition completed successfully")
 
 
 # ============================================================================
@@ -171,6 +202,8 @@ def run_basic_tests():
     results.append(run_test("Screenshot Capture", test_read_screen))
     results.append(run_test("UI Inspection", test_read_ui))
     results.append(run_test("Wait Function", test_wait))
+    results.append(run_test("Structured Planning", test_structured_plan))
+    results.append(run_test("State Updates", test_state_updates))
     
     return results
 
