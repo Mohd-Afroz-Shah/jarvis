@@ -77,9 +77,9 @@ def tap(x: int, y: int):
     except Exception as error:
         return f"Failed to click: {error}"
 
-def type_text(text: str):
+def type_text(text: str, interval: float = 0.02):
     try:
-        pyautogui.write(text, interval=0.02)
+        pyautogui.write(text, interval=interval)
 
         return f"Successfully typed: {text}"
 

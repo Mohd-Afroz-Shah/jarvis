@@ -7,8 +7,12 @@ Helps the agent break down complex commands into manageable steps.
 
 import re
 
-from llm import ask
-from task import J1Task, TaskStep
+try:
+    from .llm import ask
+    from .task import J1Task, TaskStep
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from llm import ask
+    from task import J1Task, TaskStep
 
 
 PLANNING_SYSTEM_PROMPT = """You are a planning assistant for J1, a Windows computer control agent.
@@ -132,6 +136,18 @@ def create_structured_plan(user_command):
     app_match = re.search(r"(?:open|launch)\s+(?:the\s+)?([\w ]+?)(?:\s+and|\s*,|$)", command, re.I)
     if app_match:
         steps.append(TaskStep(f"Open {app_match.group(1).strip()}"))
+
+    browser_match = re.search(
+        r"search\s+(?:the\s+)?([^,]+?)\s+for\s+(.+?)(?:\s+and\s+open|\s+then|$)",
+        command,
+        re.I,
+    )
+    if browser_match:
+        steps.append(TaskStep(f"Search {browser_match.group(1).strip()} for {browser_match.group(2).strip()}"))
+
+    if re.search(r"\b(open|click)\s+(?:the\s+)?first\s+(?:image|result|video|link)", command, re.I):
+        steps.append(TaskStep("Identify the first relevant search result"))
+        steps.append(TaskStep("Open the first relevant search result"))
 
     text_match = re.search(r"(?:write|type|enter)\s+(.+?)(?:\s*,|\s+then|\s+and\s+(?:save|close)|$)", command, re.I)
     if text_match:

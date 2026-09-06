@@ -10,14 +10,23 @@ Continues until the user's task is complete.
 
 import json
 import base64
+import re
 import time
 from io import BytesIO
 from PIL import Image
-from llm import ask
-from tools import TOOLS
-from planning import create_structured_plan
-from state import J1State
-from task_executor import execute_task_tool
+
+try:
+    from .llm import ask
+    from .tools import TOOLS
+    from .planning import create_structured_plan
+    from .state import J1State
+    from .task_executor import execute_task_tool
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from llm import ask
+    from tools import TOOLS
+    from planning import create_structured_plan
+    from state import J1State
+    from task_executor import execute_task_tool
 
 
 SYSTEM_PROMPT = """You are J1, a Windows computer-use agent.
@@ -26,6 +35,14 @@ Your job is to understand natural language commands and complete them using your
 
 **Available Tools:**
 - open_app: Open an application or folder (e.g., "notepad", "chrome", "calculator", "explorer", "downloads")
+- open_browser: Open the active browser
+- navigate: Navigate the active browser to a URL
+- browser_search: Search the active browser for a query
+- new_tab: Open a new browser tab
+- close_tab: Close the active browser tab
+- browser_back: Go back in browser history
+- browser_forward: Go forward in browser history
+- refresh_page: Refresh the active page
 - read_screen: Capture and inspect the current screen
 - read_ui: Inspect the active application's UI controls
 - click_ui: Click a Windows UI element by its visible name
@@ -51,6 +68,12 @@ Your job is to understand natural language commands and complete them using your
 10. **Continue until complete.** Multi-step tasks must be fully completed, not abandoned after one action.
 11. **No confirmation loops.** For normal operations, proceed directly. Only ask for confirmation on destructive actions.
 12. **Use wait() for slow apps.** Some applications need time to load (Office, browsers, etc.).
+13. **Use task state.** Before every action, consider the goal, current state, completed steps, remaining steps, and latest result.
+14. **Do not repeat successful actions.** If state says an app is open or a search is active, continue with the next unfinished step.
+15. **browser_search changes the current page to search results.** Do not call navigate to the same search-results URL afterward.
+16. **read_ui is information gathering only.** Never click a control merely because it appears in the UI tree.
+17. **Only click relevant controls.** The control must directly contribute to the current task; ignore suggestions, ads, unrelated buttons, and browser chrome.
+18. **Treat already_done as progress.** Choose the next remaining task step instead of retrying that action.
 
 **Agent Loop Pattern:**
 1. SEE - Understand what's on screen using read_screen or read_ui
@@ -153,6 +176,15 @@ def execute_agent_loop(user_command, max_iterations=20):
         try:
             # Get LLM response
             print(f"[Iteration {iteration}/{max_iterations}] Asking LLM...")
+            state.pending_steps = task.pending_descriptions()
+            state.current_step = len(task.steps) - len(state.pending_steps)
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Before choosing the next action, use this current task context: "
+                    f"{state.compact_context()}"
+                ),
+            })
             response = ask(messages, tools=TOOLS)
             
             # Ollama returns ChatResponse, whose structured actions live at
@@ -202,6 +234,7 @@ def execute_agent_loop(user_command, max_iterations=20):
 
             # Execute each tool call
             tool_call_results = []
+            normalized_tool_args = []
             
             for tool_call in tool_calls:
                 if isinstance(tool_call, dict):
@@ -219,6 +252,19 @@ def execute_agent_loop(user_command, max_iterations=20):
 
                 if isinstance(tool_args, str):
                     tool_args = json.loads(tool_args)
+
+                # Infer the requested site from the user's goal when the local
+                # model omits the optional browser_search site argument.
+                if tool_name == "browser_search" and not tool_args.get("site"):
+                    site_match = re.search(
+                        r"search\s+(?:the\s+)?([^,]+?)\s+for\s+",
+                        user_command,
+                        re.IGNORECASE,
+                    )
+                    if site_match:
+                        tool_args["site"] = site_match.group(1).strip()
+
+                normalized_tool_args.append(tool_args)
                 
                 print(f"🔧 Tool: {tool_name}")
                 print(f"📦 Args: {tool_args}")
@@ -226,7 +272,7 @@ def execute_agent_loop(user_command, max_iterations=20):
                 # Check for repeated tool calls (loop detection)
                 tool_sig = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
                 if tool_sig in repeated_tools:
-                    print(f"    ⚠️  WARNING: Repeated tool call detected")
+                    print("    WARNING: Repeated tool call detected; state-aware guard will prevent redundant execution")
                 else:
                     repeated_tools.append(tool_sig)
                 
@@ -272,47 +318,43 @@ def execute_agent_loop(user_command, max_iterations=20):
             
             # Preserve the assistant's structured tool calls so Ollama can
             # associate the following tool messages with its request.
+            assistant_tool_calls = []
+            for call_index, call in enumerate(tool_calls):
+                call_function = call.get("function", {}) if isinstance(call, dict) else call.function
+                call_id = (
+                    call.get("id") if isinstance(call, dict) else getattr(call, "id", None)
+                ) or f"call_{iteration}_{call_index}"
+                call_arguments = json.dumps(normalized_tool_args[call_index] or {})
+                assistant_tool_calls.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": (
+                            call_function.get("name", "")
+                            if isinstance(call_function, dict)
+                            else getattr(call_function, "name", "")
+                        ),
+                        "arguments": call_arguments,
+                    },
+                })
+
             assistant_message = {
                 "role": "assistant",
                 "content": content,
-                "tool_calls": [
-                    {
-                        "id": (
-                            call.get("id")
-                            if isinstance(call, dict)
-                            else getattr(call, "id", None)
-                        ),
-                        "type": (
-                            call.get("type", "function")
-                            if isinstance(call, dict)
-                            else getattr(call, "type", "function")
-                        ),
-                        "function": {
-                            "name": (
-                                call.get("function", {}).get("name", "")
-                                if isinstance(call, dict)
-                                else call.function.name
-                            ),
-                            "arguments": (
-                                call.get("function", {}).get("arguments", {})
-                                if isinstance(call, dict)
-                                else call.function.arguments
-                            ),
-                        }
-                    }
-                    for call in tool_calls
-                ],
+                "tool_calls": assistant_tool_calls,
             }
             messages.append(assistant_message)
             
             # Add tool results
-            for tool_result in tool_call_results:
+            for result_index, tool_result in enumerate(tool_call_results):
                 tool_message = {
                     "role": "tool",
                     "content": f"Tool '{tool_result['tool_name']}' result: {tool_result['result']}"
                 }
-                if tool_result.get("tool_call_id"):
-                    tool_message["tool_call_id"] = tool_result["tool_call_id"]
+                tool_message["tool_call_id"] = (
+                    tool_result.get("tool_call_id")
+                    or assistant_tool_calls[result_index]["id"]
+                )
                 messages.append(tool_message)
 
             state.pending_steps = task.pending_descriptions()

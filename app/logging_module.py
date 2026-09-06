@@ -8,7 +8,11 @@ Logs user commands, tool usage, results, and errors.
 import os
 import json
 from datetime import datetime
-from config import LOG_DIR
+
+try:
+    from .config import LOG_DIR
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import LOG_DIR
 
 
 def get_log_filename():

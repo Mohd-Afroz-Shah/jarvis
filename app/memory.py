@@ -8,7 +8,11 @@ Stores user preferences and saved notes.
 import os
 import json
 from datetime import datetime
-from config import NOTES_DIR
+
+try:
+    from .config import NOTES_DIR
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import NOTES_DIR
 
 
 def save_note(title, content):

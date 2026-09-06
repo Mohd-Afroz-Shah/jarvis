@@ -8,18 +8,33 @@ Supports: Ollama (local), Gemini (Google), OpenAI
 import os
 import json
 from urllib import error, request
-from config import (
-    LLM_PROVIDER,
-    LLAMACPP_MODEL,
-    LLAMACPP_BASE_URL,
-    LLAMACPP_MAX_TOKENS,
-    LLAMACPP_TIMEOUT,
-    LLAMACPP_DISABLE_THINKING,
-    OLLAMA_MODEL,
-    OLLAMA_BASE_URL,
-    GEMINI_API_KEY,
-    OPENAI_API_KEY,
-)
+
+try:
+    from .config import (
+        LLM_PROVIDER,
+        LLAMACPP_MODEL,
+        LLAMACPP_BASE_URL,
+        LLAMACPP_MAX_TOKENS,
+        LLAMACPP_TIMEOUT,
+        LLAMACPP_DISABLE_THINKING,
+        OLLAMA_MODEL,
+        OLLAMA_BASE_URL,
+        GEMINI_API_KEY,
+        OPENAI_API_KEY,
+    )
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import (
+        LLM_PROVIDER,
+        LLAMACPP_MODEL,
+        LLAMACPP_BASE_URL,
+        LLAMACPP_MAX_TOKENS,
+        LLAMACPP_TIMEOUT,
+        LLAMACPP_DISABLE_THINKING,
+        OLLAMA_MODEL,
+        OLLAMA_BASE_URL,
+        GEMINI_API_KEY,
+        OPENAI_API_KEY,
+    )
 
 
 def ask(messages, tools=None):

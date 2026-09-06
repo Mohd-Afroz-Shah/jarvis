@@ -8,8 +8,10 @@ Tests basic functionality and multi-step commands.
 import sys
 import os
 import time
+import inspect
 
 # Add app to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 
 from brain import understand
@@ -87,6 +89,18 @@ def test_wait():
     elapsed = time.time() - start
     assert 0.9 < elapsed < 1.5, "Wait should be approximately 1 second"
     print(f"Wait test completed in {elapsed:.2f}s")
+
+
+def test_package_import_and_browser_api():
+    """Regression: package imports and browser typing API should work."""
+    import app.tools as app_tools
+    from app.actions import type_text
+
+    tool_names = {tool["function"]["name"] for tool in app_tools.TOOLS}
+    assert "navigate" in tool_names, "Browser navigation should be exposed in the tool schema"
+    assert "browser_search" in tool_names, "Browser search should be exposed in the tool schema"
+    assert "interval" in inspect.signature(type_text).parameters, "type_text should support typing intervals for browser automation"
+    print("Package import and browser API regression checks passed")
 
 
 def test_structured_plan():

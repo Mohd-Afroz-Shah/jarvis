@@ -3,7 +3,10 @@
 import os
 from typing import Any, Dict
 
-from ui import get_active_ui
+try:
+    from .ui import get_active_ui
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from ui import get_active_ui
 
 
 def verify_action(action_name: str, result: Any, state=None) -> Dict[str, Any]:
@@ -24,7 +27,12 @@ def verify_action(action_name: str, result: Any, state=None) -> Dict[str, Any]:
     if action_name in ("type_text", "type_ui"):
         return {"verified": "failed" not in result_text, "method": "result"}
 
-    if action_name in ("hotkey", "press_key", "tap", "click_ui", "scroll", "wait"):
+    if action_name in (
+        "hotkey", "press_key", "tap", "click_ui", "scroll", "wait",
+        "open_browser", "navigate", "browser_search", "browser_back",
+        "browser_forward", "new_tab", "close_tab", "refresh_page",
+        "reopen_closed_tab",
+    ):
         return {"verified": "failed" not in result_text, "method": "result"}
 
     return {"verified": False, "method": "unknown"}

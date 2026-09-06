@@ -11,7 +11,11 @@ Prevents dangerous operations:
 
 import os
 import re
-from config import ALLOW_FILE_DELETE, ALLOW_FILE_WRITE, ALLOW_EXTERNAL_COMMANDS
+
+try:
+    from .config import ALLOW_FILE_DELETE, ALLOW_FILE_WRITE, ALLOW_EXTERNAL_COMMANDS
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import ALLOW_FILE_DELETE, ALLOW_FILE_WRITE, ALLOW_EXTERNAL_COMMANDS
 
 
 # Dangerous file patterns
